@@ -1,3 +1,6 @@
+// Copyright 2016 dongzerun.  All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package influxwrap
 
 import (
@@ -33,8 +36,8 @@ import (
 // },
 
 var (
-	InfluxdbBufferFull = errors.New("influxdb buffer full")
-	HandlerUnInited    = errors.New("influxdb handler not inited ")
+	ErrInfluxdbBufferFull = errors.New("influxdb buffer full")
+	ErrHandlerUnInited    = errors.New("influxdb handler not inited ")
 )
 
 var ih *InfluxHandler
@@ -46,6 +49,9 @@ type unit struct {
 	t     time.Time
 }
 
+// InfluxHandler wrap client.Client and hold unit
+// send units to Influxdb when len(ch) reach max
+// or now - last > 6min
 type InfluxHandler struct {
 	c   *client.Client
 	h   string
@@ -61,6 +67,8 @@ type InfluxHandler struct {
 	last time.Time
 }
 
+// InfluxHandler factory function
+// reutrn *InfluxHandler and error
 func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int) (*InfluxHandler, error) {
 	url, err := client.ParseConnectionString(fmt.Sprintf("%s:%d", h, p), false)
 	if err != nil {
@@ -106,6 +114,7 @@ func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int)
 	return ih, nil
 }
 
+// InitHandler 初始化全局单例
 // max 是最大聚合数量
 func InitHandler(h string, p int, db string, u string, pwd string, max int) error {
 	var err error
@@ -113,21 +122,23 @@ func InitHandler(h string, p int, db string, u string, pwd string, max int) erro
 	return err
 }
 
+// 包级别方法，立刻刷新数据到 influxdb
 func PutMetric(table string, tags map[string]string, data map[string]interface{}) error {
 	if ih == nil {
-		return HandlerUnInited
+		return ErrHandlerUnInited
 	}
 	return ih.PutMetric(table, tags, data)
 }
 
+// 包级别方法，惰性刷新数据到 influxdb
 func PutMetricLazy(table string, tags map[string]string, data map[string]interface{}) error {
 	if ih == nil {
-		return HandlerUnInited
+		return ErrHandlerUnInited
 	}
 	return ih.PutMetricLazy(table, tags, data)
 }
 
-// tags 里面有的字段，不能在data里
+// 类方法同 tags 里面有的字段，不能在data里
 func (h *InfluxHandler) PutMetric(table string, tags map[string]string, data map[string]interface{}) error {
 	err := h.putMetric(table, tags, data)
 
@@ -139,10 +150,12 @@ func (h *InfluxHandler) PutMetric(table string, tags map[string]string, data map
 	return err
 }
 
+// 类方法同 惰性刷新
 func (h *InfluxHandler) PutMetricLazy(table string, tags map[string]string, data map[string]interface{}) error {
 	return h.putMetric(table, tags, data)
 }
 
+// 共同调用底层方法，将数据写入 channel
 func (h *InfluxHandler) putMetric(table string, tags map[string]string, data map[string]interface{}) error {
 	u := unit{
 		table: table,
@@ -154,11 +167,13 @@ func (h *InfluxHandler) putMetric(table string, tags map[string]string, data map
 	select {
 	case h.ch <- u:
 	default:
-		return InfluxdbBufferFull
+		return ErrInfluxdbBufferFull
 	}
 	return nil
 }
 
+// 开辟专用 goroutine 去消费 channel数据
+// 最终合并写
 func (h *InfluxHandler) consume() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -224,6 +239,7 @@ func (h *InfluxHandler) consume() {
 	}
 }
 
+// 批量写 Influxdb 接口
 func (h *InfluxHandler) writeToInfluxdb(pts []client.Point) error {
 	bps := client.BatchPoints{
 		Points:          pts,
