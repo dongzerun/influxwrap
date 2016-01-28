@@ -61,6 +61,8 @@ type InfluxHandler struct {
 	pwd string
 
 	max   int
+	delay time.Duration // time.Second
+
 	ch    chan unit
 	force chan struct{}
 
@@ -69,7 +71,7 @@ type InfluxHandler struct {
 
 // InfluxHandler factory function
 // reutrn *InfluxHandler and error
-func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int) (*InfluxHandler, error) {
+func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int, delay int) (*InfluxHandler, error) {
 	url, err := client.ParseConnectionString(fmt.Sprintf("%s:%d", h, p), false)
 	if err != nil {
 		return nil, err
@@ -101,10 +103,16 @@ func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int)
 	ih.u = u
 	ih.pwd = pwd
 
-	if max <= 0 || max > 4096 {
+	if max <= 10 || max > 4096 {
 		ih.max = 4096
 	} else {
 		ih.max = max
+	}
+
+	if delay <= 60 || delay > 600 {
+		ih.delay = time.Second * 600
+	} else {
+		ih.delay = time.Second * delay
 	}
 
 	ih.ch = make(chan unit, int(ih.max+ih.max/2))
@@ -116,7 +124,7 @@ func NewInfluxHandler(h string, p int, db string, u string, pwd string, max int)
 
 // InitHandler 初始化全局单例
 // max 是最大聚合数量
-func InitHandler(h string, p int, db string, u string, pwd string, max int) error {
+func InitHandler(h string, p int, db string, u string, pwd string, max int, delay int) error {
 	var err error
 	ih, err = NewInfluxHandler(h, p, db, u, pwd, max)
 	return err
@@ -216,7 +224,7 @@ func (h *InfluxHandler) consume() {
 		}
 
 		// 有未刷数据，并且距离上一次刷数据超过 10min
-		if time.Now().Sub(h.last) > 600*time.Second && idx > 0 {
+		if time.Now().Sub(h.last) > h.delay && idx > 0 {
 			flush = true
 		}
 
