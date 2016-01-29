@@ -17,8 +17,13 @@ import (
 // 2. 调用 PutMetric 或 PutMetricLazy 开始灌数据。区别在于，
 //  Lazy 是惰性，等待聚合写入，一般建义用这个，减少 influxdb 压力
 //
-//            hostname, port,  database,   user,    password,   buffer size
-// InitHandler(h string, p int, db string, u string, pwd string, max int)
+//       hostname, port,  database,   user,    password,   buffer size, delay second
+// InitHandler(h string, p int, db string, u string, pwd string, max int, delay int)
+//
+// 触发刷新条件,任意满足即刷数据
+// 1. buffer 中未刷数据超过 max 条
+// 2. 距离上一次刷新时间超过 delay 秒
+// 3. 调用 PuMetric 强制刷新
 //
 // 建义使用 PutMetricLazy
 // PutMetricLazy(table string, tags map[string]string, data map[string]interface{})
